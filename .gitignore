@@ -46,3 +46,19 @@ web_assistant_*/
 # OS
 .DS_Store
 Thumbs.db
+
+# Security files
+config.json
+.env
+
+# Security - Configuration files with secrets
+config.json
+.env
+*.key
+*_secret*
+*_private*
+
+# Runtime generated files
+*.log
+temp/
+screenshots/

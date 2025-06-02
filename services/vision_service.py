@@ -20,16 +20,50 @@ class VisionService:
         self.background_thread.start()
 
     def setup_openai(self):
-        """Setup OpenAI client"""
+        """Setup OpenAI client with secure configuration"""
         try:
-            openai_api_key = None
+            # Try to use secure config first
+            try:
+                from config.secure_config import secure_config
 
+                if not secure_config.validate_api_key():
+                    print("❌ OpenAI API key validation failed")
+                    return
+
+                self.openai_client = openai.OpenAI(api_key=secure_config.openai_api_key)
+                print("✅ OpenAI API initialized with secure config")
+                return
+
+            except ImportError:
+                print("⚠️ SecureConfig not found, trying fallback methods...")
+
+            # Fallback to environment variable
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+            if openai_api_key and openai_api_key.startswith('sk-'):
+                self.openai_client = openai.OpenAI(api_key=openai_api_key)
+                print("✅ OpenAI API initialized from environment variable")
+                return
+
+            # Fallback to .env file
+            env_file = '.env'
+            if os.path.exists(env_file):
+                try:
+                    with open(env_file, 'r') as f:
+                        for line in f:
+                            if line.startswith('OPENAI_API_KEY='):
+                                api_key = line.split('=', 1)[1].strip()
+                                if api_key and api_key.startswith('sk-'):
+                                    self.openai_client = openai.OpenAI(api_key=api_key)
+                                    print("✅ OpenAI API initialized from .env file")
+                                    return
+                except Exception as e:
+                    print(f"⚠️ Error reading .env file: {e}")
+
+            # Last resort: config.json (legacy)
             config_paths = [
                 'config.json',
-                '../config.json',
                 './config/config.json',
                 os.path.join(os.path.dirname(__file__), '..', 'config.json'),
-                os.path.join(os.getcwd(), 'config.json')
             ]
 
             for config_path in config_paths:
@@ -38,26 +72,27 @@ class VisionService:
                         with open(config_path, 'r') as config_file:
                             config = json.load(config_file)
                             openai_api_key = config.get('OPENAI_API_KEY')
-                            if openai_api_key:
-                                break
+                            if openai_api_key and openai_api_key.startswith('sk-'):
+                                self.openai_client = openai.OpenAI(api_key=openai_api_key)
+                                print(f"✅ OpenAI API initialized from {config_path}")
+                                return
                 except Exception as e:
                     continue
 
-            if not openai_api_key:
-                openai_api_key = os.getenv('OPENAI_API_KEY')
-
-            if openai_api_key and openai_api_key.startswith('sk-'):
-                self.openai_client = openai.OpenAI(api_key=openai_api_key)
-                print("✅ OpenAI API initialized successfully")
-            else:
-                print("❌ OpenAI API key not found")
+            # No valid key found
+            print("❌ No valid OpenAI API key found!")
+            print("💡 Please:")
+            print("   1. Set OPENAI_API_KEY environment variable, or")
+            print("   2. Create .env file with OPENAI_API_KEY=your_key, or")
+            print("   3. Create config.json with your API key")
 
         except Exception as e:
-            print(f"Error initializing OpenAI: {e}")
+            print(f"❌ Error initializing OpenAI: {e}")
 
     def queue_background_analysis(self, url: str, screenshot_path: str):
         """Queue screenshot for background analysis"""
         if not self.openai_client:
+            print("⚠️ Cannot queue analysis: OpenAI client not initialized")
             return
 
         print(f"🔄 Queuing background analysis for: {url}")
@@ -97,7 +132,7 @@ class VisionService:
                         pass
 
                 except Exception as e:
-                    print(f"Error in background processing: {e}")
+                    print(f"❌ Error in background processing: {e}")
 
             time.sleep(1)  # Check every second
 
@@ -132,7 +167,7 @@ class VisionService:
     def _analyze_screenshot(self, screenshot_path: str, analysis_type: str) -> Optional[str]:
         """Analyze screenshot with OpenAI"""
         if not self.openai_client:
-            return "OpenAI not configured"
+            return "OpenAI not configured - check API key"
 
         try:
             base64_image = self.encode_image_to_base64(screenshot_path)
@@ -162,7 +197,7 @@ class VisionService:
             return response.choices[0].message.content
 
         except Exception as e:
-            print(f"OpenAI analysis error: {e}")
+            print(f"❌ OpenAI analysis error: {e}")
             return f"Error analyzing: {str(e)}"
 
     def encode_image_to_base64(self, image_path):
@@ -171,7 +206,7 @@ class VisionService:
             with open(image_path, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode('utf-8')
         except Exception as e:
-            print(f"Image encoding error: {e}")
+            print(f"❌ Image encoding error: {e}")
             return None
 
     def clear_cache(self):
