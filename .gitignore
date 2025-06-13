@@ -62,3 +62,7 @@ config.json
 *.log
 temp/
 screenshots/
+# Docker files (no los necesitamos)
+docker/
+docker-compose.yml
+Dockerfile*
