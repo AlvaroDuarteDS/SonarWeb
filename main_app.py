@@ -79,16 +79,25 @@ class VoiceWebAssistant:
                 if text:
                     print(f"Command: {text}")
 
-                    # Process command
-                    success = self.command_processor.process_command(text, self.main_window.update_status)
+                    # Process command - modified to return tuple
+                    result = self.command_processor.process_command(text, self.main_window.update_status)
 
-                    # Update site display and trigger background analysis
+                    # Handle result based on type
+                    if isinstance(result, tuple):
+                        success, should_analyze = result
+                    else:
+                        # Backwards compatibility
+                        success = result
+                        should_analyze = True
+
+                    # Update site display
                     if success and self.browser_service.current_url:
                         domain = self.browser_service.get_current_domain()
                         self.main_window.update_current_site(f"📍 {domain}")
 
-                        # Trigger background screenshot analysis
-                        self._trigger_background_analysis()
+                        # Only trigger background analysis for navigation commands or when needed
+                        if should_analyze:
+                            self._trigger_background_analysis()
 
                 else:
                     self.audio_service.speak("Didn't catch that", self.main_window.update_status)
@@ -146,6 +155,11 @@ class VoiceWebAssistant:
         if self.browser_service.driver and self.browser_service.current_url:
             self.browser_service.driver.refresh()
             self.audio_service.speak("Page refreshed", self.main_window.update_status)
+            # Clear cache for this URL since we refreshed
+            if self.browser_service.current_url in self.vision_service.description_cache:
+                del self.vision_service.description_cache[self.browser_service.current_url]
+            if self.browser_service.current_url in self.vision_service.content_cache:
+                del self.vision_service.content_cache[self.browser_service.current_url]
             # Trigger background analysis after refresh
             self._trigger_background_analysis()
         else:

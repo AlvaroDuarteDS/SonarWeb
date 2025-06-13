@@ -214,3 +214,61 @@ class VisionService:
         self.description_cache.clear()
         self.content_cache.clear()
         print("🗑️ Cache cleared")
+
+    # Añadir estos métodos mejorados a la clase VisionService:
+
+    def get_page_description(self, screenshot_path: str, url: str = None) -> str:
+        """Get page description - check cache first"""
+        if url and url in self.description_cache:
+            print(f"📋 Using cached description for: {url}")
+            print("✅ No API call needed - returning from cache")
+            return self.description_cache[url]
+
+        # Not in cache, analyze now
+        print(f"🔍 No cache found for: {url} - analyzing with OpenAI...")
+        description = self._analyze_screenshot(screenshot_path, "describe")
+
+        if description and url:
+            self.description_cache[url] = description
+            print(f"💾 Saved description to cache for: {url}")
+
+        return description or "Could not analyze page"
+
+    def get_main_content(self, screenshot_path: str, url: str = None) -> str:
+        """Get main content - check cache first"""
+        if url and url in self.content_cache:
+            print(f"📋 Using cached content for: {url}")
+            print("✅ No API call needed - returning from cache")
+            return self.content_cache[url]
+
+        # Not in cache, analyze now
+        print(f"🔍 No cache found for: {url} - analyzing with OpenAI...")
+        content = self._analyze_screenshot(screenshot_path, "content")
+
+        if content and url:
+            self.content_cache[url] = content
+            print(f"💾 Saved content to cache for: {url}")
+
+        return content or "Could not read content"
+
+    def queue_background_analysis(self, url: str, screenshot_path: str):
+        """Queue screenshot for background analysis"""
+        if not self.openai_client:
+            print("⚠️ Cannot queue analysis: OpenAI client not initialized")
+            return
+
+        # Check if we already have both caches for this URL
+        if url in self.description_cache and url in self.content_cache:
+            print(f"✅ Already have complete cache for {url} - skipping background analysis")
+            try:
+                os.remove(screenshot_path)
+            except:
+                pass
+            return
+
+        print(f"🔄 Queuing background analysis for: {url}")
+        self.processing_queue.append({
+            'url': url,
+            'screenshot_path': screenshot_path,
+            'timestamp': time.time()
+        })

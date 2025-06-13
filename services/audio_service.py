@@ -5,9 +5,11 @@ import tempfile
 import os
 import time
 import threading
-from gtts import gTTS
 from pygame import mixer
 import uuid
+import subprocess
+import sys
+import asyncio
 
 
 class AudioService:
@@ -27,6 +29,22 @@ class AudioService:
         # Create temp directory
         if not os.path.exists(self.speech_temp_dir):
             os.makedirs(self.speech_temp_dir)
+
+        # Initialize Edge-TTS
+        self._init_edge_tts()
+
+    def _init_edge_tts(self):
+        """Initialize Edge TTS - Fast and high quality"""
+        try:
+            import edge_tts
+            self.edge_tts = edge_tts
+            print("✅ Edge-TTS initialized")
+        except ImportError:
+            print("📦 Installing edge-tts...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "edge-tts"], check=True)
+            import edge_tts
+            self.edge_tts = edge_tts
+            print("✅ Edge-TTS initialized")
 
     def start_recording(self):
         """Start recording audio"""
@@ -105,12 +123,13 @@ class AudioService:
                 pass
 
     def speak(self, text, status_callback=None):
-        """Convert text to speech"""
+        """Convert text to speech using Edge-TTS"""
         print(f"Assistant: {text}")
 
         def speak_thread():
             try:
                 self.speaking = True
+                start_time = time.time()
 
                 if status_callback:
                     status_callback("Speaking...")
@@ -120,11 +139,23 @@ class AudioService:
 
                 filename = os.path.join(self.speech_temp_dir, f"speech_{uuid.uuid4()}.mp3")
 
-                tts = gTTS(text=text, lang='en', slow=False)
-                tts.save(filename)
+                # Use Edge-TTS
+                async def generate():
+                    communicate = self.edge_tts.Communicate(text, "en-US-AriaNeural")
+                    await communicate.save(filename)
 
+                # Run async function
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(generate())
+                loop.close()
+
+                # Play the audio
                 mixer.music.load(filename)
                 mixer.music.play()
+
+                generation_time = time.time() - start_time
+                print(f"⚡ TTS generation time: {generation_time:.2f}s")
 
                 while mixer.music.get_busy() and self.speaking:
                     time.sleep(0.1)
